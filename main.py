@@ -2,14 +2,11 @@ from PIL import Image
 from transformers import CLIPProcessor, CLIPModel, CLIPImageProcessor, CLIPVisionModel
 from io import BytesIO
 from datetime import datetime
-#from chromadb.config import Settings
-#from pymilvus import MilvusClient
 import torch
 import pyautogui
 import base64
 import requests
 import time
-#import chromadb
 import threading
 import msvcrt
 import sys
@@ -22,47 +19,6 @@ SYSTEM_PROMPT = '''You are a helpful assistant that can see images.
 Please respond to all user requests.
 '''
 SAVE_PATH = "desktop_log.pt"
-#DB_PATH = "database"
-
-'''
-# Milvus
-def setup_milvus():
-    client = MilvusClient(DB_PATH)
-    if client.has_collection("logs"):
-        client.drop_collection("logs")
-    else:
-        client.create_collection(
-            collection_name="logs",
-            dimension=512,
-            auto_id=True,
-            enable_dynamic_field=True
-        )
-    return client
-
-def save_entries(client, log):
-    for entry in log['entries']:
-        data = {"vector": entry['embedding'], "caption": ['caption'], "timestamp": ['timestamp']}
-        client.insert(collection_name="logs", data=data)
-    print(f"Log saved to {DB_PATH}")
-'''
-
-'''
-#ChromaDB
-def setup_chromadb():
-    client = chromadb.PersistentClient(path=DB_PATH, settings=Settings(anonymized_telemetry=False))
-    client.reset()
-    logs_db = client.create_collection("logs")
-    return logs_db
-
-def save_logs_db(logs_db, log):
-    for i in range(len(log)):
-        logs_db.add(
-        embeddings=[log['entries'][i]['embedding']],
-        metadatas=[{"caption": log['entries'][i]['caption'], "timestamp": log['entries'][i]['timestamp']}],
-        ids=[str(i)]
-    )
-    print(f"Log saved to {DB_PATH}")
-'''
 
 # obtain vector embedding for an image
 def get_image_embedding(image):
@@ -79,7 +35,7 @@ def get_image_embedding(image):
         outputs = model(**inputs)
 
     # image only
-    embedding = outputs.last_hidden_state[0]
+    embedding = outputs.last_hidden_state[0][0]
     #print(len(embedding))
     return embedding
 
@@ -129,8 +85,12 @@ def add_to_log(log, last_id, caption, embedding):
     log['entries'].append(record)
     return last_id + 1
 
-# save log as pytorch dict
+# save log as pytorch dict, adding metadata
 def save_log(log):
+    timestamp = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
+    log['version'] =  "0.2"
+    log['date_saved'] = timestamp
+    log['entry_count'] = str(len(log['entries']))
     torch.save(log, SAVE_PATH)
     print(f"Log saved to {SAVE_PATH}")
 
@@ -143,9 +103,7 @@ def async_operation():
     return True  # Indicate completion
           
 def main(interval=60):
-    #client = setup_milvus()
-    #logs_db = setup_chromadb()
-    log = {'entries': [], 'version': "0.1"}
+    log = {'entries': []}
     last_id = 0
     print("Started Recording. press Q to exit or S to save anytime")
     while True:
@@ -160,8 +118,6 @@ def main(interval=60):
         if msvcrt.kbhit():
             if msvcrt.getch() == b's':
                 save_log(log)
-                #save_entries(milvus, log)
-                #save_logs_db(logs_db, log)
             if msvcrt.getch() == b'q':
                 exit(0)
      

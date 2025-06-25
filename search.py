@@ -16,7 +16,7 @@ def get_image_embedding(image):
     with torch.no_grad():
         outputs = model(**inputs)
 
-    embedding = outputs.last_hidden_state[0]
+    embedding = outputs.last_hidden_state[0][0]
     return embedding
 
 # filter entries by text match
@@ -27,16 +27,22 @@ def search_log_text(log, query):
             filtered_log.append(entry)
     return filtered_log
 
+# handle converting the embedding depending on log version
+def handle_embedding(embedding, log_version):
+    if float(log_version) < 0.2:
+        return embedding[0]
+    else:
+        return embedding
+
 # filter entries by similarity score
 def search_log_image(log, query):
     cosine_similarity = torch.nn.CosineSimilarity(dim=0)
     image = Image.open(query)
-    q_embedding = get_image_embedding(image)
-    #print(len(q_embedding[0]))
+    q_embedding = handle_embedding(get_image_embedding(image), log['version'])
     filtered_log = []
     for entry in log['entries']:
         # compute similarity between query embedding and entry embedding
-        similarity = cosine_similarity(q_embedding[0], entry['embedding'][0]).item()
+        similarity = cosine_similarity(q_embedding, handle_embedding(entry['embedding'], log['version'])).item()
         if similarity >= SIMILARITY_MINIMUM:
             filtered_log.append(entry)
     return filtered_log
@@ -70,6 +76,14 @@ def view_entries(entries):
         else:
             print("Invalid option")
 
+# subject to version number
+def view_metadata(log):
+    print("Log version: " + log['version'])
+    if float(log['version']) >= 0.2:
+        print("Date saved: " + log['date_saved'])
+        print("Entry count: " + log['entry_count'])
+    print("End of metadata")
+
 def main():
     try:
         log = torch.load(SAVE_PATH)
@@ -78,10 +92,12 @@ def main():
         print("Error: couldn't load log")
         
     while True:
+        print()
         print("Options:")
         print("A - View all entries")
         print("T - Text search")
         print("I - Image search")
+        print("M - View metadata")
         print("Q - Quit")
         choice = input("Choose an option >")
         if choice.lower() == "a":
@@ -94,18 +110,19 @@ def main():
             query = input("Enter file path for image search >")
             filtered_log = search_log_image(log, query)
             view_entries(filtered_log)
+        elif choice.lower() == "m":
+            view_metadata(log)
         elif choice.lower() == "q":
             return
         else:
             print("Invalid option")
 
-'''
+# for testing
 def test_image_search():
     log = torch.load(SAVE_PATH)
     query = "C:\\Users\\Lenovo\\Documents\\Lightshot\\VLM Testing\\chrome.png"
     results = search_log_image(log, query)
     print(len(results))
-'''
 
 main()
 #test_image_search()
