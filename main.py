@@ -2,6 +2,7 @@ from PIL import Image
 from transformers import CLIPProcessor, CLIPModel, CLIPImageProcessor, CLIPVisionModel
 from io import BytesIO
 from datetime import datetime
+import os
 import torch
 import pyautogui
 import base64
@@ -11,32 +12,25 @@ import threading
 import msvcrt
 import sys
 
-HF_HOME = "D:\\Downloads\\clip-vit-large-patch14"
-LLM_URL = "http://localhost:5001/v1"
-#LLM_URL = "http://192.168.0.63:5001/v1"
+HF_HOME = os.environ['HF_HOME']
+LLM_URL = os.environ['OPENAI_API_BASE']
 SYSTEM_PROMPT = '''You are a helpful assistant that can see images.
 
 Please respond to all user requests.
 '''
 SAVE_PATH = "desktop_log.pt"
 
+clip_model = CLIPVisionModel.from_pretrained("openai/clip-vit-large-patch14", cache_dir=HF_HOME)
+clip_processor = CLIPImageProcessor.from_pretrained("openai/clip-vit-large-patch14", cache_dir=HF_HOME)
+
 # obtain vector embedding for an image
 def get_image_embedding(image):
-    model = CLIPVisionModel.from_pretrained("openai/clip-vit-large-patch14", cache_dir=HF_HOME)
-    processor = CLIPImageProcessor.from_pretrained("openai/clip-vit-large-patch14", cache_dir=HF_HOME)
-
-    #image = Image.open("C:\\Users\\Lenovo\\Documents\\Lightshot\\VLM Testing\\desktop.png")
-    #image2 = Image.open("C:\\Users\\Lenovo\\Documents\\Lightshot\\VLM Testing\\chrome.png")
-
-    inputs = processor(images=image, return_tensors="pt")
-    #print(inputs)
+    inputs = clip_processor(images=image, return_tensors="pt")
 
     with torch.no_grad():
-        outputs = model(**inputs)
+        outputs = clip_model(**inputs)
 
-    # image only
     embedding = outputs.last_hidden_state[0][0]
-    #print(len(embedding))
     return embedding
 
 # encode screenshot into base64
@@ -73,10 +67,15 @@ def get_llm_caption(screenshot64):
         "max_tokens": 1024
     }
 
-    response = requests.post(LLM_URL + "/chat/completions", json=messages)
-    caption = response.json()['choices'][0]['message']['content']
-    print(caption)
-    return caption
+    try:
+        response = requests.post(LLM_URL + "/chat/completions", json=messages)
+        response.raise_for_status()
+        caption = response.json()['choices'][0]['message']['content']
+        print(caption)
+        return caption
+    except requests.exceptions.RequestException as e:
+        print(f"LLM API Error: {e}")
+        return ""
 
 # add a screenshot record to the log
 def add_to_log(log, last_id, caption, embedding):

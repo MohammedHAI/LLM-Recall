@@ -1,20 +1,21 @@
 from PIL import Image
 from transformers import CLIPProcessor, CLIPModel, CLIPImageProcessor, CLIPVisionModel
+import os
 import torch
 
-HF_HOME = "D:\\Downloads\\clip-vit-large-patch14"
+HF_HOME = os.environ['HF_HOME']
 SAVE_PATH = "desktop_log.pt"
 SIMILARITY_MINIMUM = 0.75
 
+clip_model = CLIPVisionModel.from_pretrained("openai/clip-vit-large-patch14", cache_dir=HF_HOME)
+clip_processor = CLIPImageProcessor.from_pretrained("openai/clip-vit-large-patch14", cache_dir=HF_HOME)
+
 # obtain vector embedding for an image
 def get_image_embedding(image):
-    model = CLIPVisionModel.from_pretrained("openai/clip-vit-large-patch14", cache_dir=HF_HOME)
-    processor = CLIPImageProcessor.from_pretrained("openai/clip-vit-large-patch14", cache_dir=HF_HOME)
-
-    inputs = processor(images=image, return_tensors="pt")
+    inputs = clip_processor(images=image, return_tensors="pt")
 
     with torch.no_grad():
-        outputs = model(**inputs)
+        outputs = clip_model(**inputs)
 
     embedding = outputs.last_hidden_state[0][0]
     return embedding
@@ -37,7 +38,13 @@ def handle_embedding(embedding, log_version):
 # filter entries by similarity score
 def search_log_image(log, query):
     cosine_similarity = torch.nn.CosineSimilarity(dim=0)
-    image = Image.open(query)
+    
+    try:
+        image = Image.open(query)
+    except:
+        print("Error: Failed to open image")
+        return [] # empty log
+    
     q_embedding = handle_embedding(get_image_embedding(image), log['version'])
     filtered_log = []
     for entry in log['entries']:
@@ -119,7 +126,12 @@ def main():
 
 # for testing
 def test_image_search():
-    log = torch.load(SAVE_PATH)
+    try:
+        log = torch.load(SAVE_PATH)
+        print(f"loaded log from {SAVE_PATH}")
+    except:
+        print("Error: couldn't load log")
+    
     query = "C:\\Users\\Lenovo\\Documents\\Lightshot\\VLM Testing\\chrome.png"
     results = search_log_image(log, query)
     print(len(results))
